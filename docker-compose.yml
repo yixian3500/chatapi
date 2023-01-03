@@ -1,7 +1,7 @@
 version: '3.8'
 services:
-  nest-api:
-    container_name: nest-api
+  chat-api:
+    container_name: chat-api
     build:
       context: .
       dockerfile: Dockerfile
@@ -25,4 +25,4 @@ services:
 
 volumes:
   postgres:
-    name: chatgpt-db
+    name: chatapi-db
