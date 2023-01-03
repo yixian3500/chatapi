@@ -1,7 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-expect-error
-import type { SendMessageOptions } from 'chatgpt';
 import { PrismaService } from 'nestjs-prisma';
 import { ChatgptPoolService } from './chatgpt-pool/chatgpt-pool.service';
 import { Cron } from '@nestjs/schedule';
@@ -82,59 +79,65 @@ export class ChatgptService {
     });
   }
   async getCurrentActiveChatGPT() {
-    return this.prismaService.chatGPTAccount.findMany({
+    const account = await this.prismaService.chatGPTAccount.findMany({
       where: { status: 'Running' },
       select: {
         email: true,
       },
     });
+    const email = account[Math.floor(Math.random() * account.length)].email;
+    return email;
   }
-  async sendChatGPTMessage(message: string, options?: SendMessageOptions) {
+  async sendChatGPTMessage(
+    message: string,
+    opts?: {
+      userId?: string;
+      tenantId: string;
+    }
+  ) {
     let email: string;
-    const { conversationId, parentMessageId } = options || {};
-    if (!conversationId || !parentMessageId) {
-      const account = await this.getCurrentActiveChatGPT();
-      email = account[Math.floor(Math.random() * account.length)].email;
+    const { userId, tenantId } = opts;
+    const onetimeRequest = !userId;
+    if (onetimeRequest) {
+      email = await this.getCurrentActiveChatGPT();
     } else {
-      const account = await this.prismaService.chatGPTConversation.findUnique({
-        where: { id: conversationId },
-        select: {
-          email: true,
-        },
-      });
-      if (!account) {
-        throw new Error('Conversation not found');
+      const conversation =
+        await this.prismaService.chatGPTConversation.findFirst({
+          where: { userId },
+        });
+      if (!conversation) {
+        email = await this.getCurrentActiveChatGPT();
       }
-      email = account.email;
     }
     // Send Message
     this.logger.debug(`Send message to ${email}: ${message}`);
     try {
       const messageResult = await this.chatgptPoolService.sendMessage(message, {
-        ...options,
         email: email,
       });
-      if (messageResult) {
-        await this.prismaService.chatGPTConversation.upsert({
-          where: {
-            conversationId: messageResult.conversationId,
-          },
-          create: {
-            conversationId: messageResult.conversationId,
-            messageId: messageResult.messageId,
-            email,
-          },
-          update: {
-            messageId: messageResult.messageId,
-            conversationId: messageResult.conversationId,
-          },
-        });
-        return messageResult;
-      } else {
+      if (!messageResult) {
         this.logger.error(`Send message to ${email} failed`);
       }
+      if (!onetimeRequest) {
+        // Save conversation info
+        await this.prismaService.chatGPTConversation.upsert({
+          where: { userId_tenantId: { userId, tenantId } },
+          create: {
+            userId,
+            email,
+            conversationId: messageResult.conversationId,
+            messageId: messageResult.messageId,
+            tenantId,
+          },
+          update: {
+            email,
+          },
+        });
+      }
+      return messageResult;
     } catch (e) {
       this.logger.error(`Send message to ${email} failed: ${e}`);
+      // Update Email status
       this.prismaService.chatGPTAccount.update({
         where: { email },
         data: { status: 'Down' },

@@ -6,9 +6,11 @@ import {
   Delete,
   Param,
   Put,
+  Headers,
 } from '@nestjs/common';
 import { ChatgptService } from './chatgpt.service';
-
+// TODO: Add Tennet support
+const TENANT_ID = 'chatapi';
 @Controller('chatgpt')
 export class ChatgptController {
   constructor(private readonly chatgptService: ChatgptService) {}
@@ -32,8 +34,16 @@ export class ChatgptController {
     return await this.chatgptService.updateChatGPTAccount(id, updateCatDto);
   }
   @Post('/sendMessage')
-  async sendChatGPTMessage(@Body() messageDto: any) {
-    const { message, options } = await messageDto;
-    return await this.chatgptService.sendChatGPTMessage(message, options);
+  async sendChatGPTMessage(
+    @Headers() headers: Record<string, string>,
+    @Body() messageDto: any
+  ) {
+    const tenantId = TENANT_ID;
+    const { userId } = headers;
+    const { message } = messageDto;
+    return await this.chatgptService.sendChatGPTMessage(message, {
+      tenantId,
+      userId,
+    });
   }
 }
