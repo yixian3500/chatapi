@@ -2,13 +2,17 @@ version: '3.8'
 services:
   chat-api:
     container_name: chat-api
+    # wait for postgres to be ready
     build:
       context: .
       dockerfile: Dockerfile
+    restart: always
     ports:
       - 3000:3000
     depends_on:
       - postgres
+    environment:
+      - DABATASE_URL=postgres://postgres:postgres@postgres:5432/chatgpt
     env_file:
       - .env
 
